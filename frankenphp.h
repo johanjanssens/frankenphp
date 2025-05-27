@@ -96,4 +96,6 @@ void frankenphp_register_bulk(
 typedef void (*frankenphp_minit_callback_t)(void);
 void frankenphp_minit_callback(frankenphp_minit_callback_t callback);
 
+uintptr_t frankenphp_thread_index(void);
+
 #endif
