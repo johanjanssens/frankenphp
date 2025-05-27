@@ -14,6 +14,8 @@ import "C"
 import (
 	"crypto/tls"
 	"net"
+	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 	"unsafe"
@@ -231,32 +233,47 @@ var tlsProtocolStrings = map[uint16]string{
 	tls.VersionTLS13: "TLSv1.3",
 }
 
-// SanitizedPathJoin performs filepath.Join(root, reqPath) that
-// is safe against directory traversal attacks. It uses logic
-// similar to that in the Go standard library, specifically
-// in the implementation of http.Dir. The root is assumed to
-// be a trusted path, but reqPath is not; and the output will
-// never be outside of root. The resulting path can be used
-// with the local file system.
+// sanitizedPathJoin safely joins `root` and `reqPath` into a sanitized path
+// that is protected against directory traversal attacks. It processes paths
+// in a way similar to the Go standard library implementation of http.Dir and
+// ensures the resulting path will never escape the `root` directory.
 //
-// Adapted from https://github.com/caddyserver/caddy/blob/master/modules/caddyhttp/reverseproxy/fastcgi/fastcgi.go
-// Copyright 2015 Matthew Holt and The Caddy Authors
+// This function was extended to handle cases where the `root` is a URL to
+// support custom stream wrappers. It uses `net/url` to handle URLs correctly,
+// preserving the scheme (like `file://`, `frankenphp://`, or others) and
+// ensuring the proper joining of paths.
+//
+//   - Inspired by the implementation for FastCGI in Caddy's reverse proxy:
+//     https://github.com/caddyserver/caddy/blob/master/modules/caddyhttp/reverseproxy/fastcgi/fastcgi.go
+//   - Copyright 2015 Matthew Holt and The Caddy Authors
 func sanitizedPathJoin(root, reqPath string) string {
+
+	var cleanedPath string
+
 	if root == "" {
 		root = "."
 	}
 
-	path := filepath.Join(root, filepath.Clean("/"+reqPath))
+	cleanedReqPath := filepath.Clean("/" + reqPath)
+
+	// Handle case where root can be an url to support custom stream wrappers
+	u, _ := url.Parse(root)
+	if u != nil {
+		u.Path = path.Join(u.Path, cleanedReqPath)
+		cleanedPath = u.String()
+	} else {
+		cleanedPath = filepath.Join(root, cleanedReqPath)
+	}
 
 	// filepath.Join also cleans the path, and cleaning strips
 	// the trailing slash, so we need to re-add it afterward.
 	// if the length is 1, then it's a path to the root,
 	// and that should return ".", so we don't append the separator.
 	if strings.HasSuffix(reqPath, "/") && len(reqPath) > 1 {
-		path += separator
+		cleanedPath += separator
 	}
 
-	return path
+	return cleanedPath
 }
 
 const separator = string(filepath.Separator)
