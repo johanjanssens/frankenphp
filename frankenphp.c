@@ -496,6 +496,11 @@ PHP_MINIT_FUNCTION(frankenphp) {
     php_error(E_WARNING, "Failed to find built-in getenv function");
   }
 
+  // Trigger the registered callback if it exists
+  if (minit_callback != NULL) {
+    minit_callback();
+  }
+
   return SUCCESS;
 }
 
