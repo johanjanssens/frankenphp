@@ -34,6 +34,7 @@ ZEND_TSRMLS_CACHE_DEFINE()
 #endif
 
 static const char *MODULES_TO_RELOAD[] = {"filter", "session", NULL};
+size_t frankenphp_thread_stack_size = 256 * 1024; // Default 256 KB
 
 frankenphp_version frankenphp_get_version() {
   return (frankenphp_version){
@@ -951,22 +952,43 @@ static void *php_main(void *arg) {
 
 int frankenphp_new_main_thread(int num_threads) {
   pthread_t thread;
+  pthread_attr_t attr;
 
-  if (pthread_create(&thread, NULL, &php_main, (void *)(intptr_t)num_threads) !=
+  pthread_attr_init(&attr);
+  pthread_attr_setstacksize(&attr, frankenphp_thread_stack_size);
+
+  if (pthread_create(&thread, &attr, &php_main, (void *)(intptr_t)num_threads) !=
       0) {
     return -1;
   }
 
+  pthread_attr_destroy(&attr);
   return pthread_detach(thread);
 }
 
 bool frankenphp_new_php_thread(uintptr_t thread_index) {
   pthread_t thread;
-  if (pthread_create(&thread, NULL, &php_thread, (void *)thread_index) != 0) {
+  pthread_attr_t attr;
+
+  pthread_attr_init(&attr);
+  pthread_attr_setstacksize(&attr, frankenphp_thread_stack_size);
+
+  if (pthread_create(&thread, &attr, &php_thread, (void *)thread_index) != 0) {
     return false;
   }
+
+  pthread_attr_destroy(&attr);
   pthread_detach(thread);
   return true;
+}
+
+// Function to set the stack size programmatically
+void frankenphp_set_thread_stack_size(size_t stack_size) {
+    if (stack_size < PTHREAD_STACK_MIN) {
+        fprintf(stderr, "Error: stack size must be >= %zu bytes\n", (size_t)PTHREAD_STACK_MIN);
+        return;
+    }
+    frankenphp_thread_stack_size = stack_size;
 }
 
 int frankenphp_request_startup() {
