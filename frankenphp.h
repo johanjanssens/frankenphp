@@ -92,4 +92,6 @@ void frankenphp_register_bulk(
     ht_key_value_pair auth_type, ht_key_value_pair remote_ident,
     ht_key_value_pair request_uri);
 
+uintptr_t frankenphp_thread_index(void);
+
 #endif
