@@ -466,6 +466,14 @@ PHP_FUNCTION(headers_send) {
   RETURN_LONG(sapi_send_headers());
 }
 
+// Global variable to store the callback
+static frankenphp_minit_callback_t minit_callback = NULL;
+
+// Function to allow Go to set the callback
+void frankenphp_minit_callback(frankenphp_minit_callback_t callback) {
+    minit_callback = callback;
+}
+
 PHP_MINIT_FUNCTION(frankenphp) {
   zend_function *func;
 
