@@ -92,10 +92,6 @@ void frankenphp_register_bulk(
     ht_key_value_pair auth_type, ht_key_value_pair remote_ident,
     ht_key_value_pair request_uri);
 
-
-typedef void (*frankenphp_minit_callback_t)(void);
-void frankenphp_minit_callback(frankenphp_minit_callback_t callback);
-
 uintptr_t frankenphp_thread_index(void);
 
 #endif
