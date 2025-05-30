@@ -466,14 +466,6 @@ PHP_FUNCTION(headers_send) {
   RETURN_LONG(sapi_send_headers());
 }
 
-// Global variable to store the callback
-static frankenphp_minit_callback_t minit_callback = NULL;
-
-// Function to allow Go to set the callback
-void frankenphp_minit_callback(frankenphp_minit_callback_t callback) {
-    minit_callback = callback;
-}
-
 PHP_MINIT_FUNCTION(frankenphp) {
   zend_function *func;
 
@@ -493,11 +485,6 @@ PHP_MINIT_FUNCTION(frankenphp) {
     ((zend_internal_function *)func)->handler = ZEND_FN(frankenphp_getenv);
   } else {
     php_error(E_WARNING, "Failed to find built-in getenv function");
-  }
-
-  // Trigger the registered callback if it exists
-  if (minit_callback != NULL) {
-    minit_callback();
   }
 
   return SUCCESS;
