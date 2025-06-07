@@ -19,9 +19,9 @@ package frankenphp
 // #cgo CFLAGS: -I/usr/local/include -I/usr/local/include/php -I/usr/local/include/php/main -I/usr/local/include/php/TSRM -I/usr/local/include/php/Zend -I/usr/local/include/php/ext -I/usr/local/include/php/ext/date/lib
 // #cgo linux CFLAGS: -D_GNU_SOURCE
 // #cgo darwin CFLAGS: -I/opt/homebrew/include
-// #cgo LDFLAGS: -L/usr/local/lib -L/usr/lib -lphp -ldl -lm -lutil
-// #cgo linux LDFLAGS: -lresolv
-// #cgo darwin LDFLAGS: -Wl,-rpath,/usr/local/lib -L/opt/homebrew/lib -L/opt/homebrew/opt/libiconv/lib -liconv
+// #cgo LDFLAGS: -L/usr/local/lib -L/usr/lib -lphp -lm -lutil
+// #cgo linux LDFLAGS: -ldl -lresolv
+// #cgo darwin LDFLAGS: -Wl,-rpath,/usr/local/lib -L/opt/homebrew/lib -L/opt/homebrew/opt/libiconv/lib -liconv -ldl
 // #include <stdlib.h>
 // #include <stdint.h>
 // #include <php_variables.h>
@@ -491,6 +491,10 @@ func addHeader(fc *frankenPHPContext, cString *C.char, length C.int) {
 //export go_write_headers
 func go_write_headers(threadIndex C.uintptr_t, status C.int, headers *C.zend_llist) C.bool {
 	fc := phpThreads[threadIndex].getRequestContext()
+
+	if fc == nil {
+		return C.bool(false)
+	}
 
 	if fc.isDone {
 		return C.bool(false)
