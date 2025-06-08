@@ -5,7 +5,6 @@ import "C"
 import (
 	"context"
 	"log/slog"
-	"path/filepath"
 	"time"
 )
 
@@ -82,11 +81,15 @@ func setupWorkerScript(handler *workerThread, worker *worker) {
 	}
 
 	// Create a dummy request to set up the worker
-	fc, err := newDummyContext(
-		filepath.Base(worker.fileName),
-		WithRequestDocumentRoot(filepath.Dir(worker.fileName), false),
+	var err error
+	var fc *frankenPHPContext
+
+	fc, err = newDummyContext(
+		worker.fileName,
+		WithRequestDocumentRoot(worker.documentRoot, false),
 		WithRequestPreparedEnv(worker.env),
 	)
+
 	if err != nil {
 		panic(err)
 	}

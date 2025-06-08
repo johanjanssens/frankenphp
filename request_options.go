@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-
-	"github.com/dunglas/frankenphp/internal/fastabs"
 )
 
 // RequestOption instances allow to configure a FrankenPHP Request.
@@ -29,8 +27,9 @@ func WithRequestDocumentRoot(documentRoot string, resolveSymlink bool) RequestOp
 	return func(o *frankenPHPContext) (err error) {
 		v, ok := documentRootCache.Load(documentRoot)
 		if !ok {
+
 			// make sure file root is absolute
-			v, err = fastabs.FastAbs(documentRoot)
+			v, err = safeAbsPath(documentRoot)
 			if err != nil {
 				return err
 			}

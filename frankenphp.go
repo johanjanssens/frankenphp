@@ -47,7 +47,7 @@ import (
 	"time"
 	"unsafe"
 	// debug on Linux
-	//_ "github.com/ianlancetaylor/cgosymbolizer"
+	// _ "github.com/ianlancetaylor/cgosymbolizer"
 )
 
 type contextKeyStruct struct{}
@@ -70,7 +70,8 @@ var (
 
 	metrics Metrics = nullMetrics{}
 
-	maxWaitTime time.Duration
+	maxWaitTime  time.Duration
+	documentRoot string
 )
 
 type syslogLevel int
@@ -368,6 +369,8 @@ func Init(options ...Option) error {
 		}
 	}
 
+	documentRoot = opt.documentRoot
+
 	if opt.logger == nil {
 		// set a default logger
 		// to disable logging, set the logger to slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -431,6 +434,7 @@ func Init(options ...Option) error {
 	ctx := context.Background()
 	logger.LogAttrs(ctx, slog.LevelInfo, "FrankenPHP started 🐘", slog.String("php_version", Version().Version), slog.Int("num_threads", mainThread.numThreads), slog.Int("max_threads", mainThread.maxThreads))
 	if EmbeddedAppPath != "" {
+		documentRoot = EmbeddedAppPath
 		logger.LogAttrs(ctx, slog.LevelInfo, "embedded PHP app 📦", slog.String("path", EmbeddedAppPath))
 	}
 
@@ -492,7 +496,7 @@ func updateServerContext(thread *phpThread, fc *frankenPHPContext, isWorkerReque
 	// Info: https://www.ietf.org/rfc/rfc3875 Page 14
 	var cPathTranslated *C.char
 	if fc.pathInfo != "" {
-		cPathTranslated = thread.pinCString(sanitizedPathJoin(fc.documentRoot, fc.pathInfo)) // Info: http://www.oreilly.com/openbook/cgi/ch02_04.html
+		cPathTranslated = thread.pinCString(safePathJoin(fc.documentRoot, fc.pathInfo)) // Info: http://www.oreilly.com/openbook/cgi/ch02_04.html
 	}
 
 	cRequestUri := thread.pinCString(request.URL.RequestURI())
