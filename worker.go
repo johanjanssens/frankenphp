@@ -15,13 +15,14 @@ import (
 
 // represents a worker script and can have many threads assigned to it
 type worker struct {
-	name        string
-	fileName    string
-	num         int
-	env         PreparedEnv
-	requestChan chan *frankenPHPContext
-	threads     []*phpThread
-	threadMutex sync.RWMutex
+	name         string
+	fileName     string
+	documentRoot string
+	num          int
+	env          PreparedEnv
+	requestChan  chan *frankenPHPContext
+	threads      []*phpThread
+	threadMutex  sync.RWMutex
 }
 
 var (
@@ -36,6 +37,23 @@ func initWorkers(opt []workerOpt) error {
 	watcherIsEnabled = len(directoriesToWatch) > 0
 
 	for _, o := range opt {
+
+		if !filepath.IsAbs(o.fileName) {
+
+			if documentRoot != "" {
+				o.documentRoot = documentRoot
+			} else {
+				var err error
+				if o.documentRoot, err = os.Getwd(); err != nil {
+					return err
+				}
+			}
+
+		} else {
+			o.documentRoot = filepath.Dir(o.fileName)
+			o.fileName = filepath.Base(o.fileName)
+		}
+
 		worker, err := newWorker(o)
 		if err != nil {
 			return err
@@ -97,12 +115,13 @@ func newWorker(o workerOpt) (*worker, error) {
 
 	o.env["FRANKENPHP_WORKER\x00"] = "1"
 	w := &worker{
-		name:        o.name,
-		fileName:    absFileName,
-		num:         o.num,
-		env:         o.env,
-		requestChan: make(chan *frankenPHPContext),
-		threads:     make([]*phpThread, 0, o.num),
+		name:         o.name,
+		fileName:     strings.TrimPrefix(o.fileName, separator),
+		documentRoot: o.documentRoot,
+		num:          o.num,
+		env:          o.env,
+		requestChan:  make(chan *frankenPHPContext),
+		threads:      make([]*phpThread, 0, o.num),
 	}
 	workers[key] = w
 

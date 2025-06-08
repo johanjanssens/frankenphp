@@ -57,8 +57,8 @@ func NewRequestWithContext(r *http.Request, opts ...RequestOption) (*http.Reques
 	}
 
 	if fc.documentRoot == "" {
-		if EmbeddedAppPath != "" {
-			fc.documentRoot = EmbeddedAppPath
+		if documentRoot != "" {
+			fc.documentRoot = documentRoot
 		} else {
 			var err error
 			if fc.documentRoot, err = os.Getwd(); err != nil {
