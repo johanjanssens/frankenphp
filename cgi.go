@@ -13,6 +13,7 @@ package frankenphp
 import "C"
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/url"
 	"path"
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/dunglas/frankenphp/internal/fastabs"
 	"github.com/dunglas/frankenphp/internal/phpheaders"
 )
 
@@ -233,47 +235,84 @@ var tlsProtocolStrings = map[uint16]string{
 	tls.VersionTLS13: "TLSv1.3",
 }
 
-// sanitizedPathJoin safely joins `root` and `reqPath` into a sanitized path
-// that is protected against directory traversal attacks. It processes paths
-// in a way similar to the Go standard library implementation of http.Dir and
-// ensures the resulting path will never escape the `root` directory.
+// SanitizedPathJoin performs filepath.Join(root, reqPath) that
+// is safe against directory traversal attacks. It uses logic
+// similar to that in the Go standard library, specifically
+// in the implementation of http.Dir. The root is assumed to
+// be a trusted path, but reqPath is not; and the output will
+// never be outside of root. The resulting path can be used
+// with the local file system.
 //
-// This function was extended to handle cases where the `root` is a URL to
-// support custom stream wrappers. It uses `net/url` to handle URLs correctly,
-// preserving the scheme (like `file://`, `frankenphp://`, or others) and
-// ensuring the proper joining of paths.
-//
-//   - Inspired by the implementation for FastCGI in Caddy's reverse proxy:
-//     https://github.com/caddyserver/caddy/blob/master/modules/caddyhttp/reverseproxy/fastcgi/fastcgi.go
-//   - Copyright 2015 Matthew Holt and The Caddy Authors
+// Adapted from https://github.com/caddyserver/caddy/blob/master/modules/caddyhttp/reverseproxy/fastcgi/fastcgi.go
+// Copyright 2015 Matthew Holt and The Caddy Authors
 func sanitizedPathJoin(root, reqPath string) string {
-
-	var cleanedPath string
-
 	if root == "" {
 		root = "."
 	}
 
-	cleanedReqPath := filepath.Clean("/" + reqPath)
-
-	// Handle case where root can be an url to support custom stream wrappers
-	u, _ := url.Parse(root)
-	if u != nil {
-		u.Path = path.Join(u.Path, cleanedReqPath)
-		cleanedPath = u.String()
-	} else {
-		cleanedPath = filepath.Join(root, cleanedReqPath)
-	}
+	path := filepath.Join(root, filepath.Clean("/"+reqPath))
 
 	// filepath.Join also cleans the path, and cleaning strips
 	// the trailing slash, so we need to re-add it afterward.
 	// if the length is 1, then it's a path to the root,
 	// and that should return ".", so we don't append the separator.
 	if strings.HasSuffix(reqPath, "/") && len(reqPath) > 1 {
-		cleanedPath += separator
+		path += separator
 	}
 
-	return cleanedPath
+	return path
+}
+
+// safePathJoin safely joins `root` and `reqPath` into a sanitized path
+// with protection against directory traversal attacks. It extends
+// sanitizedPathJoin to handle URLs with custom stream wrappers.
+//
+// When the root is a URL (like `file://`, `frankenphp://`), it preserves
+// the scheme and properly joins the paths. For regular file paths, it
+// delegates to the standard sanitizedPathJoin function.
+func safePathJoin(root, reqPath string) string {
+
+	// Handle case where root might be a URL to support custom stream wrappers
+	u, _ := url.Parse(root)
+	if u != nil && u.Scheme != "" {
+		// For URL paths, handle the joining differently to preserve the scheme
+		cleanedReqPath := filepath.Clean("/" + reqPath)
+		u.Path = path.Join(u.Path, cleanedReqPath)
+		cleanedPath := u.String()
+
+		// Preserve trailing slash if present in the original request path
+		if strings.HasSuffix(reqPath, "/") && len(reqPath) > 1 {
+			cleanedPath += separator
+		}
+
+		return cleanedPath
+	}
+
+	// For regular file paths, delegate to the existing sanitizedPathJoin function
+	return sanitizedPathJoin(root, reqPath)
+}
+
+// safeAbsPath checks if a path is an absolute URL (contains a scheme),
+// and if so, cleans the URL path component. Otherwise, it converts the relative
+// path to an absolute path using fastabs.FastAbs.
+func safeAbsPath(path string) (string, error) {
+	// Check if the path has a URL scheme (like frankenphp://, file://, etc.)
+	u, _ := url.Parse(path)
+	if u != nil && u.Scheme != "" {
+		if u.Path != "" {
+			u.Path = filepath.Clean(u.Path)
+		}
+
+		return u.String(), nil
+	}
+
+	// Not a URL, convert it to an absolute file path
+	absPath, err := fastabs.FastAbs(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert to absolute path %q: %w", path, err)
+	}
+
+	return absPath, nil
 }
 
 const separator = string(filepath.Separator)

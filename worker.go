@@ -4,11 +4,12 @@ package frankenphp
 import "C"
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/dunglas/frankenphp/internal/fastabs"
 	"github.com/dunglas/frankenphp/internal/watcher"
 )
 
@@ -74,11 +75,8 @@ func getWorkerKey(name string, filename string) string {
 }
 
 func newWorker(o workerOpt) (*worker, error) {
-	absFileName, err := fastabs.FastAbs(o.fileName)
-	if err != nil {
-		return nil, fmt.Errorf("worker filename is invalid %q: %w", o.fileName, err)
-	}
 
+	absFileName := safePathJoin(o.documentRoot, o.fileName)
 	key := getWorkerKey(o.name, absFileName)
 	if _, ok := workers[key]; ok {
 		return nil, fmt.Errorf("two workers cannot use the same key %q", key)

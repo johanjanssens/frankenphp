@@ -357,7 +357,7 @@ func updateServerContext(thread *phpThread, fc *frankenPHPContext, isWorkerReque
 	// Info: https://www.ietf.org/rfc/rfc3875 Page 14
 	var cPathTranslated *C.char
 	if fc.pathInfo != "" {
-		cPathTranslated = thread.pinCString(sanitizedPathJoin(fc.documentRoot, fc.pathInfo)) // Info: http://www.oreilly.com/openbook/cgi/ch02_04.html
+		cPathTranslated = thread.pinCString(safePathJoin(fc.documentRoot, fc.pathInfo)) // Info: http://www.oreilly.com/openbook/cgi/ch02_04.html
 	}
 
 	cRequestUri := thread.pinCString(request.URL.RequestURI())
