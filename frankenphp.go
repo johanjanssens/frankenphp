@@ -139,6 +139,12 @@ func (p *PHPThread) Request() *http.Request {
 	return p.ctx.request
 }
 
+// Pin pins a Go object, preventing it from being moved or freed by the garbage
+// collector until the [Pinner.Unpin] method has been called.
+func (p *PHPThread) Pin(pointer any) {
+	p.thread.Pin(pointer)
+}
+
 type PHPContext struct {
 	*frankenPHPContext // Embed the unexported frankenPHPContext
 }
