@@ -1,23 +1,20 @@
 package frankenphp
 
-//#include "frankenphp.h"
-//#include <sys/resource.h>
+// #include "frankenphp.h"
+// #include <sys/resource.h>
 import "C"
 import (
 	"context"
 	"errors"
+	"github.com/dunglas/frankenphp/internal/cpu"
 	"log/slog"
 	"sync"
 	"time"
-
-	"github.com/dunglas/frankenphp/internal/cpu"
 )
 
 const (
 	// requests have to be stalled for at least this amount of time before scaling
 	minStallTime = 5 * time.Millisecond
-	// time to check for CPU usage before scaling a single thread
-	cpuProbeTime = 120 * time.Millisecond
 	// do not scale over this amount of CPU usage
 	maxCpuUsageForScaling = 0.8
 	// downscale idle threads every x seconds
@@ -88,7 +85,7 @@ func scaleWorkerThread(worker *worker) {
 	}
 
 	// probe CPU usage before scaling
-	if !cpu.ProbeCPUs(cpuProbeTime, maxCpuUsageForScaling, mainThread.done) {
+	if !cpu.ProbeLoad(maxCpuUsageForScaling) {
 		return
 	}
 
@@ -97,6 +94,8 @@ func scaleWorkerThread(worker *worker) {
 		logger.LogAttrs(context.Background(), slog.LevelWarn, "could not increase max_threads, consider raising this limit", slog.String("worker", worker.name), slog.Any("error", err))
 		return
 	}
+
+	logger.Debug("scaled worker thread", slog.String("worker", worker.name), slog.Int("threadIndex", thread.threadIndex))
 
 	autoScaledThreads = append(autoScaledThreads, thread)
 }
@@ -111,7 +110,7 @@ func scaleRegularThread() {
 	}
 
 	// probe CPU usage before scaling
-	if !cpu.ProbeCPUs(cpuProbeTime, maxCpuUsageForScaling, mainThread.done) {
+	if !cpu.ProbeLoad(maxCpuUsageForScaling) {
 		return
 	}
 
@@ -120,6 +119,8 @@ func scaleRegularThread() {
 		logger.LogAttrs(context.Background(), slog.LevelWarn, "could not increase max_threads, consider raising this limit", slog.Any("error", err))
 		return
 	}
+
+	logger.Debug("scaled regular thread", slog.Int("threadIndex", thread.threadIndex))
 
 	autoScaledThreads = append(autoScaledThreads, thread)
 }
