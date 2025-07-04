@@ -214,7 +214,7 @@ func (r *PHPContext) Env(newEnv ...map[string]string) map[string]string {
 	return unpreparedEnv // Return the retrieved clean environment
 }
 
-// PHPThreadFromIndex retrieves a PHP thread by its index and ensures that the
+// FromThread retrieves a PHP thread by its index and ensures that the
 // PHP context is added to the request context, similar to the way NewRequestFromContext works.
 //
 // This function checks if the system is running and ensures the thread exists
@@ -232,7 +232,7 @@ func (r *PHPContext) Env(newEnv ...map[string]string) map[string]string {
 //   - https://github.com/dunglas/frankenphp/blob/49d2e6299651e669505e33848b35187da0ce22c9/context.go#L95
 //   - NewRequestFromContext documentation for similar context handling.
 
-func PHPThreadFromIndex(index int) (*PHPThread, bool) {
+func Thread(index int) (*PHPThread, bool) {
 
 	if !isRunning {
 		return nil, false
@@ -255,8 +255,8 @@ func PHPThreadFromIndex(index int) (*PHPThread, bool) {
 	return nil, false
 }
 
-// PHPContextFromContext extracts the PHP thread from a context.
-func PHPContextFromContext(ctx context.Context) (*PHPContext, bool) {
+// FromContext extracts the PHP thread from a context.
+func FromContext(ctx context.Context) (*PHPContext, bool) {
 	if fctx, ok := fromContext(ctx); ok {
 		return &PHPContext{fctx}, true
 	}
