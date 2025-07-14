@@ -125,18 +125,13 @@ type PHPConfig struct {
 }
 
 type PHPThread struct {
-	ctx    *PHPContext
-	thread *phpThread
+	Request *http.Request
+	thread  *phpThread
 }
 
-// Context retrieves the PHPContext of the PHPThread
-func (p *PHPThread) Context() *PHPContext {
-	return p.ctx
-}
-
-// Request retrieves the request associated with the PHPThread
-func (p *PHPThread) Request() *http.Request {
-	return p.ctx.request
+// IsRequestDone determines whether the request associate with the PHPContext has been closed.
+func (p *PHPThread) IsRequestDone() bool {
+	return p.thread.getRequestContext().isDone
 }
 
 // Pin pins a Go object, preventing it from being moved or freed by the garbage
@@ -145,94 +140,11 @@ func (p *PHPThread) Pin(pointer any) {
 	p.thread.Pin(pointer)
 }
 
-type PHPContext struct {
-	*frankenPHPContext // Embed the unexported frankenPHPContext
-}
-
-// DocumentRoot retrieves the document root directory.
-func (c *PHPContext) DocumentRoot() string {
-	return c.documentRoot
-}
-
-// SplitPath retrieves the precomputed slices of the request path
-func (c *PHPContext) SplitPath() []string {
-	return c.splitPath
-}
-
-// Request retrieves the request
-func (c *PHPContext) Request() *http.Request {
-	return c.request
-}
-
-// OriginalRequest retrieves the original request
-func (c *PHPContext) OriginalRequest() *http.Request {
-	if c.originalRequest != nil {
-		return c.originalRequest
-	}
-	return c.request
-}
-
-// IsDone determines whether the request associate with the PHPContext has been closed.
-func (p *PHPContext) IsDone() bool {
-	return p.isDone
-}
-
-// Env retrieves or sets environment variables for the PHPContext.
+// Thread retrieves a PHP thread by its index
 //
-// If no arguments are provided, it retrieves the current environment variables,
-// stripping any null characters ("\x00") from keys and returning the clean environment map.
-//
-// If a map is provided as an argument, it sets the environment variables by preparing
-// them (adding a null character ("\x00") to keys, if necessary),
-// and updates the context's environment.
-//
-// Returns the current environment when called without arguments or nil when setting.
-func (r *PHPContext) Env(newEnv ...map[string]string) map[string]string {
-
-	unpreparedEnv := make(map[string]string, len(r.env))
-
-	// If new environment data is provided, set it into the context
-	if len(newEnv) > 0 && !r.isDone {
-
-		for k, v := range newEnv[0] {
-			// Remove the null character ("\x00") from the key and convert it to uppercase
-			unpreparedKey := strings.ToUpper(strings.TrimSuffix(k, "\x00"))
-			unpreparedEnv[unpreparedKey] = v
-		}
-
-		r.env = PreparedEnv(unpreparedEnv)
-		return nil // Return nil when setting the environment
-	}
-
-	// No arguments provided, retrieve the current environment
-
-	for k, v := range r.env {
-		// Remove the null character ("\x00") from the key
-		unpreparedKey := strings.TrimSuffix(k, "\x00")
-		unpreparedEnv[unpreparedKey] = v
-	}
-
-	return unpreparedEnv // Return the retrieved clean environment
-}
-
-// FromThread retrieves a PHP thread by its index and ensures that the
-// PHP context is added to the request context, similar to the way NewRequestFromContext works.
-//
-// This function checks if the system is running and ensures the thread exists
-// at the specified index. If the thread is found, it integrates the `frankenPHPContext`
-// into the request context by associating it with the given `contextKey`.
-// This allows accessing the PHP context from the request context where needed.
-//
-// Notes:
-//   - The function will return `nil` and `false` if:
-//       1. The system is not running (`isRunning` is false).
-//       2. There is no thread found at the provided index.
-//   - The PHP thread returned will include the PHP context embedded into the request context.
-//
-// See also:
-//   - https://github.com/dunglas/frankenphp/blob/49d2e6299651e669505e33848b35187da0ce22c9/context.go#L95
-//   - NewRequestFromContext documentation for similar context handling.
-
+// The function will return `nil` and `false` if:
+//  1. The system is not running (`isRunning` is false).
+//  2. There is no thread found at the provided index.
 func Thread(index int) (*PHPThread, bool) {
 
 	if !isRunning {
@@ -242,24 +154,7 @@ func Thread(index int) (*PHPThread, bool) {
 	// Retrieve the thread by index and check for nil
 	thread := phpThreads[index]
 	if thread != nil {
-
-		fc := thread.getRequestContext()
-
-		// Add the frankenPHPContext to the request context
-		// See https://github.com/dunglas/frankenphp/blob/49d2e6299651e669505e33848b35187da0ce22c9/context.go#L95
-		ctx := context.WithValue(fc.request.Context(), contextKey, fc)
-		fc.request = fc.request.WithContext(ctx)
-
-		return &PHPThread{&PHPContext{fc}, thread}, true
-	}
-
-	return nil, false
-}
-
-// FromContext extracts the PHP thread from a context.
-func FromContext(ctx context.Context) (*PHPContext, bool) {
-	if fctx, ok := fromContext(ctx); ok {
-		return &PHPContext{fctx}, true
+		return &PHPThread{thread.getRequestContext().request, thread}, true
 	}
 
 	return nil, false
