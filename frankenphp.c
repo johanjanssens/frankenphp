@@ -1299,6 +1299,10 @@ static int frankenphp_request_startup() {
   return FAILURE;
 }
 
+uintptr_t frankenphp_thread_index(void) {
+  return thread_index;
+}
+
 int frankenphp_execute_script(char *file_name) {
   if (frankenphp_request_startup() == FAILURE) {
 

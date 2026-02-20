@@ -1,7 +1,7 @@
 package frankenphp
 
-//#include "frankenphp.h"
-//#include <sys/resource.h>
+// #include "frankenphp.h"
+// #include <sys/resource.h>
 import "C"
 import (
 	"errors"
@@ -16,8 +16,6 @@ import (
 const (
 	// requests have to be stalled for at least this amount of time before scaling
 	minStallTime = 5 * time.Millisecond
-	// time to check for CPU usage before scaling a single thread
-	cpuProbeTime = 120 * time.Millisecond
 	// do not scale over this amount of CPU usage
 	maxCpuUsageForScaling = 0.8
 	// downscale idle threads every x seconds
@@ -84,8 +82,8 @@ func addWorkerThread(worker *worker) (*phpThread, error) {
 
 // scaleWorkerThread adds a worker PHP thread automatically
 func scaleWorkerThread(worker *worker) {
-	// probe CPU usage before acquiring the lock (avoids holding lock during 120ms sleep)
-	if !cpu.ProbeCPUs(cpuProbeTime, maxCpuUsageForScaling, mainThread.done) {
+	// probe CPU usage before acquiring the lock
+	if !cpu.ProbeLoad(maxCpuUsageForScaling) {
 		return
 	}
 
@@ -114,8 +112,8 @@ func scaleWorkerThread(worker *worker) {
 
 // scaleRegularThread adds a regular PHP thread automatically
 func scaleRegularThread() {
-	// probe CPU usage before acquiring the lock (avoids holding lock during 120ms sleep)
-	if !cpu.ProbeCPUs(cpuProbeTime, maxCpuUsageForScaling, mainThread.done) {
+	// probe CPU usage before acquiring the lock
+	if !cpu.ProbeLoad(maxCpuUsageForScaling) {
 		return
 	}
 

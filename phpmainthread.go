@@ -163,7 +163,8 @@ func (mainThread *phpMainThread) setAutomaticMaxThreads() {
 		return
 	}
 	perThreadMemoryLimit := int64(C.frankenphp_get_current_memory_limit())
-	totalSysMemory := memory.TotalSysMemory()
+	totalSysMemory, _ := memory.TotalSysMemory()
+
 	if perThreadMemoryLimit <= 0 || totalSysMemory == 0 {
 		mainThread.maxThreads = mainThread.numThreads * 2
 		return

@@ -78,4 +78,6 @@ void frankenphp_register_bulk(
 
 void register_extensions(zend_module_entry **m, int len);
 
+uintptr_t frankenphp_thread_index(void);
+
 #endif
