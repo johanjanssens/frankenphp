@@ -743,7 +743,18 @@ static size_t frankenphp_ub_write(const char *str, size_t str_length) {
       go_ub_write(thread_index, (char *)str, str_length);
 
   if (result.r1) {
-    php_handle_aborted_connection();
+    /*
+     * Inline the effect of php_handle_aborted_connection() without calling
+     * zend_bailout(). On ARM64/macOS, zend_bailout() triggers longjmp()
+     * which crashes due to PAC (Pointer Authentication) verification failure
+     * on the jmp_buf — the buffer was signed in a different stack frame.
+     *
+     * This matches Nginx Unit's approach (nxt_php_sapi.c): set the
+     * connection status and disable output, letting PHP detect the abort
+     * at safe points (e.g. between opcodes via zend_interrupt checks).
+     */
+    PG(connection_status) = PHP_CONNECTION_ABORTED;
+    php_output_set_status(PHP_OUTPUT_DISABLED);
   }
 
   return result.r0;
@@ -777,7 +788,8 @@ static int frankenphp_send_headers(sapi_headers_struct *sapi_headers) {
 static void frankenphp_sapi_flush(void *server_context) {
   sapi_send_headers();
   if (go_sapi_flush(thread_index)) {
-    php_handle_aborted_connection();
+    PG(connection_status) = PHP_CONNECTION_ABORTED;
+    php_output_set_status(PHP_OUTPUT_DISABLED);
   }
 }
 
