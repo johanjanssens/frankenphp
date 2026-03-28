@@ -22,6 +22,7 @@ type phpThread struct {
 	handlerMu   sync.RWMutex
 	handler     threadHandler
 	state       *state.ThreadState
+	requestType RequestType // inherited from the request that triggered autoscaling
 }
 
 // threadHandler defines how the callbacks from the C thread should be handled

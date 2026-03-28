@@ -38,8 +38,9 @@ type frankenPHPContext struct {
 	handlerParameters  any
 	handlerReturn      any
 
-	done      chan any
-	startedAt time.Time
+	done        chan any
+	startedAt   time.Time
+	requestType RequestType
 }
 
 type contextHolder struct {

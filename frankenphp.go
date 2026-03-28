@@ -320,8 +320,15 @@ func Init(options ...Option) error {
 
 	maxWaitTime = opt.maxWaitTime
 
-	if opt.maxIdleTime > 0 {
-		maxIdleTime = opt.maxIdleTime
+	// Set the scaling policy: explicit policy > default with custom idle time > built-in default
+	if opt.scalingPolicy != nil {
+		scalingPolicy = opt.scalingPolicy
+	} else if opt.maxIdleTime > 0 {
+		dp := NewDefaultScalingPolicy()
+		dp.MaxIdleTime = opt.maxIdleTime
+		scalingPolicy = dp
+	} else {
+		scalingPolicy = NewDefaultScalingPolicy()
 	}
 
 	workerThreadCount, err := calculateMaxThreads(opt)
@@ -829,6 +836,6 @@ func resetGlobals() {
 	workersByName = nil
 	workersByPath = nil
 	watcherIsEnabled = false
-	maxIdleTime = defaultMaxIdleTime
+	scalingPolicy = NewDefaultScalingPolicy()
 	globalMu.Unlock()
 }

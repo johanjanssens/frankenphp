@@ -154,6 +154,16 @@ func WithRequestLogger(logger *slog.Logger) RequestOption {
 	}
 }
 
+// WithRequestType identifies the kind of request for scaling, metrics, and logging.
+// See RequestTypeDefault, RequestTypeAsync.
+func WithRequestType(rt RequestType) RequestOption {
+	return func(o *frankenPHPContext) error {
+		o.requestType = rt
+
+		return nil
+	}
+}
+
 // WithWorkerName sets the worker that should handle the request
 func WithWorkerName(name string) RequestOption {
 	return func(o *frankenPHPContext) error {

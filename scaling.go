@@ -13,47 +13,42 @@ import (
 )
 
 const (
-	// requests have to be stalled for at least this amount of time before scaling
-	minStallTime = 5 * time.Millisecond
-	// do not scale over this amount of CPU usage
-	maxCpuUsageForScaling = 0.8
 	// downscale idle threads every x seconds
 	downScaleCheckTime = 5 * time.Second
 	// max amount of threads stopped in one iteration of downScaleCheckTime
 	maxTerminationCount = 10
-	// default time an autoscaled thread may be idle before being deactivated
-	defaultMaxIdleTime = 5 * time.Second
 )
 
 var (
-	cpuCount             = runtime.GOMAXPROCS(0)
-	cpuProc              *process.Process
-	cpuProcOnce          sync.Once
+	cpuCount    = runtime.GOMAXPROCS(0)
+	cpuProc     *process.Process
+	cpuProcOnce sync.Once
+
 	ErrMaxThreadsReached = errors.New("max amount of overall threads reached")
 
-	maxIdleTime       = defaultMaxIdleTime
+	scalingPolicy     ScalingPolicy = NewDefaultScalingPolicy()
 	scaleChan         chan *frankenPHPContext
 	autoScaledThreads = []*phpThread{}
 	scalingMu         = new(sync.RWMutex)
 )
 
-// probeCPULoad checks if current process CPU usage is below a threshold.
-// Uses Percent(0) which returns the delta since the last call (non-blocking).
-// See: https://pkg.go.dev/github.com/shirou/gopsutil/v4/process#Process.Percent
-func probeCPULoad(maxLoadFactor float64) bool {
+// getCPUUsage returns the current process CPU usage as a fraction of total capacity (0.0-1.0).
+// Returns 1.0 (max load) if the process handle is unavailable or an error occurs,
+// which causes policies to block scale-up as a safe default.
+func getCPUUsage() float64 {
 	cpuProcOnce.Do(func() {
 		cpuProc, _ = process.NewProcess(int32(os.Getpid()))
 	})
 	if cpuProc == nil {
-		return false
+		return 1.0
 	}
 
 	cpuPercent, err := cpuProc.Percent(0)
 	if err != nil {
-		return false
+		return 1.0
 	}
 
-	return cpuPercent < float64(cpuCount)*100.0*maxLoadFactor
+	return cpuPercent / (float64(cpuCount) * 100.0)
 }
 
 func initAutoScaling(mainThread *phpMainThread) {
@@ -103,12 +98,7 @@ func addWorkerThread(worker *worker) (*phpThread, error) {
 }
 
 // scaleWorkerThread adds a worker PHP thread automatically
-func scaleWorkerThread(worker *worker) {
-	// probe CPU usage before acquiring the lock
-	if !probeCPULoad(maxCpuUsageForScaling) {
-		return
-	}
-
+func scaleWorkerThread(worker *worker, rt RequestType) {
 	scalingMu.Lock()
 	defer scalingMu.Unlock()
 
@@ -125,20 +115,16 @@ func scaleWorkerThread(worker *worker) {
 		return
 	}
 
+	thread.requestType = rt
 	autoScaledThreads = append(autoScaledThreads, thread)
 
 	if globalLogger.Enabled(globalCtx, slog.LevelInfo) {
-		globalLogger.LogAttrs(globalCtx, slog.LevelInfo, "upscaling worker thread", slog.String("worker", worker.name), slog.Int("thread", thread.threadIndex), slog.Int("num_threads", len(autoScaledThreads)))
+		globalLogger.LogAttrs(globalCtx, slog.LevelInfo, "upscaling worker thread", slog.String("worker", worker.name), slog.String("type", string(rt)), slog.Int("thread", thread.threadIndex), slog.Int("num_threads", len(autoScaledThreads)))
 	}
 }
 
 // scaleRegularThread adds a regular PHP thread automatically
-func scaleRegularThread() {
-	// probe CPU usage before acquiring the lock
-	if !probeCPULoad(maxCpuUsageForScaling) {
-		return
-	}
-
+func scaleRegularThread(rt RequestType) {
 	scalingMu.Lock()
 	defer scalingMu.Unlock()
 
@@ -155,10 +141,11 @@ func scaleRegularThread() {
 		return
 	}
 
+	thread.requestType = rt
 	autoScaledThreads = append(autoScaledThreads, thread)
 
 	if globalLogger.Enabled(globalCtx, slog.LevelInfo) {
-		globalLogger.LogAttrs(globalCtx, slog.LevelInfo, "upscaling regular thread", slog.Int("thread", thread.threadIndex), slog.Int("num_threads", len(autoScaledThreads)))
+		globalLogger.LogAttrs(globalCtx, slog.LevelInfo, "upscaling regular thread", slog.String("type", string(rt)), slog.Int("thread", thread.threadIndex), slog.Int("num_threads", len(autoScaledThreads)))
 	}
 }
 
@@ -179,21 +166,21 @@ func startUpscalingThreads(maxScaledThreads int, scale chan *frankenPHPContext, 
 
 		select {
 		case fc := <-scale:
-			timeSinceStalled := time.Since(fc.startedAt)
+			metrics := ScalingMetrics{
+				CPUUsage:      getCPUUsage(),
+				StallDuration: time.Since(fc.startedAt),
+				ActiveThreads: scaledThreadCount,
+				MaxThreads:    maxScaledThreads,
+				RequestType:   fc.requestType,
+			}
 
-			// if the request has not been stalled long enough, wait and repeat
-			if timeSinceStalled < minStallTime {
-				select {
-				case <-done:
-					return
-				case <-time.After(minStallTime - timeSinceStalled):
-					continue
-				}
+			if !scalingPolicy.ShouldScaleUp(metrics) {
+				continue
 			}
 
 			// if the request has been stalled long enough, scale
 			if fc.worker == nil {
-				scaleRegularThread()
+				scaleRegularThread(fc.requestType)
 				continue
 			}
 
@@ -206,7 +193,7 @@ func startUpscalingThreads(maxScaledThreads int, scale chan *frankenPHPContext, 
 				continue
 			}
 
-			scaleWorkerThread(fc.worker)
+			scaleWorkerThread(fc.worker, fc.requestType)
 		case <-done:
 			return
 		}
@@ -226,6 +213,9 @@ func startDownScalingThreads(done chan struct{}) {
 
 // deactivateThreads checks all threads and removes those that have been inactive for too long
 func deactivateThreads() {
+	// probe CPU before acquiring the lock — keeps Percent(0) window tight
+	// so scale-up always has a fresh baseline, and gives policies CPU data
+	cpuUsage := getCPUUsage()
 	stoppedThreadCount := 0
 	scalingMu.Lock()
 	defer scalingMu.Unlock()
@@ -243,9 +233,17 @@ func deactivateThreads() {
 			continue
 		}
 
-		// convert threads to inactive if they have been idle for too long
-		if thread.state.Is(state.Ready) && waitTime > maxIdleTime.Milliseconds() {
+		metrics := ScalingMetrics{
+			CPUUsage:      cpuUsage,
+			IdleDuration:  time.Duration(waitTime) * time.Millisecond,
+			ActiveThreads: len(autoScaledThreads),
+			RequestType:   thread.requestType,
+		}
+
+		// convert threads to inactive if the policy says so
+		if thread.state.Is(state.Ready) && scalingPolicy.ShouldScaleDown(metrics) {
 			convertToInactiveThread(thread)
+			thread.requestType = RequestTypeDefault
 			stoppedThreadCount++
 			autoScaledThreads = append(autoScaledThreads[:i], autoScaledThreads[i+1:]...)
 

@@ -22,15 +22,16 @@ type WorkerOption func(*workerOpt) error
 type opt struct {
 	hotReloadOpt
 
-	ctx         context.Context
-	numThreads  int
-	maxThreads  int
-	workers     []workerOpt
-	logger      *slog.Logger
-	metrics     Metrics
-	phpIni      map[string]string
-	maxWaitTime time.Duration
-	maxIdleTime time.Duration
+	ctx           context.Context
+	numThreads    int
+	maxThreads    int
+	workers       []workerOpt
+	logger        *slog.Logger
+	metrics       Metrics
+	phpIni        map[string]string
+	maxWaitTime   time.Duration
+	maxIdleTime   time.Duration
+	scalingPolicy ScalingPolicy
 }
 
 type workerOpt struct {
@@ -158,9 +159,21 @@ func WithMaxWaitTime(maxWaitTime time.Duration) Option {
 }
 
 // WithMaxIdleTime configures the max time an autoscaled thread may be idle before being deactivated.
+// If a ScalingPolicy is also set via WithScalingPolicy, the policy takes precedence.
 func WithMaxIdleTime(maxIdleTime time.Duration) Option {
 	return func(o *opt) error {
 		o.maxIdleTime = maxIdleTime
+
+		return nil
+	}
+}
+
+// WithScalingPolicy sets the autoscaling policy that controls when threads are added or removed.
+// If not set, DefaultScalingPolicy is used (matching FrankenPHP's built-in behavior).
+// See also: DefaultScalingPolicy, ImmediateScalingPolicy.
+func WithScalingPolicy(policy ScalingPolicy) Option {
+	return func(o *opt) error {
+		o.scalingPolicy = policy
 
 		return nil
 	}
