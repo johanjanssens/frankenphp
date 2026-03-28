@@ -224,8 +224,10 @@ func startDownScalingThreads(done chan struct{}) {
 	}
 }
 
-// deactivateThreads checks all threads and removes those that have been inactive for too long
+// deactivateThreads checks all threads and removes those that have been inactive for too long.
+// Also probes CPU to keep the Percent(0) baseline fresh for scale-up decisions.
 func deactivateThreads() {
+	probeCPULoad(1.0)
 	stoppedThreadCount := 0
 	scalingMu.Lock()
 	defer scalingMu.Unlock()
